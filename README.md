@@ -1,69 +1,88 @@
-# Antigravity Proxy (Rust Edition)
+# Antigravity Proxy
 
-> 🚀 高性能 Google Antigravity & Cloud Code 内部 API 反向代理与 CLI 控制中心 (Rust 重构版本)。  
-> 将 Google 强大的 Gemini 4 Argon、Gemini 3.8/3.7 Flash、Claude 5.5 / 4.6 等前沿模型转化为标准 OpenAI / Gemini 格式接口。
+Antigravity Proxy 是一个将 Google Cloud Code 内部 API（Antigravity）桥接为标准 OpenAI 与 Gemini Native 协议的反向代理服务。
 
----
+本项目基于 TypeScript 开源实现 [Kazuki-0147/Antigravity-Proxy](https://github.com/Kazuki-0147/Antigravity-Proxy) 重构，使用 Rust 编写。
 
-## 🌟 致谢与原项目
+## 架构与支持协议
 
-本项目是基于优秀的 TypeScript 开源项目 [AntigravityProxy (by Kazuki-0147)](https://github.com/Kazuki-0147/Antigravity-Proxy) 使用 **Rust** 进行的高性能完全重写。
+- **OpenAI 兼容端点**
+  - `/v1/chat/completions`（流式与非流式）
+  - `/v1/models`
+  - 支持通过 `reasoning_effort` (`low`, `medium`, `high`) 或模型名称后缀控制思考推理档位。
+- **Gemini 原生端点**
+  - `/v1beta/models/{model}:{action}`
+  - `/v1/models/{model}:{action}`
+- **管理与状态接口**
+  - 内嵌 Web 管理面板（默认端口 `8317`）
+  - Server-Sent Events (`/api/sse`) 状态与日志推送
+  - 多端点配额同步与轮询机制
 
-感谢原作者 [@Kazuki-0147](https://github.com/Kazuki-0147) 及社区贡献者在逆向分析 Google Cloud Code 内部协议、设备指纹伪装与调度逻辑上做出的先驱性工作！
+## 支持模型映射
 
----
+服务自动处理内部 Sandbox 通道与 CLI 生产通道的分流：
 
-## ✨ 核心特性
+| 客户端请求模型名 | 内部路由通道 | 思考支持 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `gemini-3.8-flash` | Sandbox | low / medium / high | 默认等级为 high |
+| `gemini-3.7-flash` | Sandbox | low / medium / high | 默认等级为 high |
+| `gemini-3.1-pro` | Sandbox | low / high | - |
+| `gemini-4-argon` | Sandbox | 默认开启 | Google 旗舰推理模型 |
+| `claude-sonnet-4-6` | Sandbox | thinking | 映射至 `claude-sonnet-4-6-thinking` |
+| `claude-opus-4-6` | Sandbox | thinking | 映射至 `claude-opus-4-6-thinking` |
+| `gemini-2.5-pro` | CLI | 预算制 | 需相应访问权限 |
+| `gemini-2.5-flash` | CLI | 预算制 | 需相应访问权限 |
 
-- **极致性能与低资源占用**：由 Rust + Tokio + Axum 驱动，常驻内存仅数十 MB，极低延迟。
-- **全格式兼容**：
-  - OpenAI 兼容接口 (`/v1/chat/completions`, `/v1/models`)
-  - Gemini Native 原生接口 (`/v1beta/models/...`)
-  - 支持 DeepSeek / OpenAI 风格思考控制参数 (`reasoning_effort: "low" | "medium" | "high"`)
-- **前沿模型支持**：
-  - **Gemini 4 Argon**（Google 最新旗舰推理模型）
-  - **Gemini 3.8 / 3.7 Flash**（支持 low / medium / high 三档深度思考调度）
-  - **Claude 5.5 / 4.6 系列**（Sonnet / Opus 深度推理思考）
-- **官方最新配额同步**：
-  - 完美对齐官方三大额度分类：**Gemini Models (5h & Weekly)**、**Claude/GPT**、**Gemini 4 Argon**
-  - 多端点探测与自动兜底，精准反映当前账号真实剩余比例与重置倒计时。
-- **内置 WebUI 与精准指标遥测**：
-  - 实时 SSE 状态同步与仪表盘。
-  - 请求详细遥测：总耗时、首字延迟 (TTFT)、Decode 纯生成速率 (tok/s)、Prompt 缓存命中率 (Cache Hit %)、Thinking Token 明细统计。
+## 构建与运行
 
----
+### 依赖环境
+- Rust 1.80 或更高版本
+- Cargo
 
-## 🚀 快速开始
-
-### 1. 编译构建
-
+### 编译
 ```bash
 cargo build --release
 ```
+编译产物位于 `target/release/antigravity-proxy`（Windows 下为 `antigravity-proxy.exe`）。
 
-产物将生成在 `target/release/antigravity-proxy.exe`。
-
-### 2. 账号授权与配额刷新
-
+### 账号配置
+初始化配置文件与账号文件：
 ```bash
-# 查看帮助
-./target/release/antigravity-proxy.exe --help
-
-# 导入/刷新账号配额
-./target/release/antigravity-proxy.exe account refresh
+cp antigravity-accounts.example.json antigravity-accounts.json
+```
+向 `antigravity-accounts.json` 中填入凭据后，可执行刷新命令同步配额：
+```bash
+./target/release/antigravity-proxy account refresh
 ```
 
-### 3. 启动服务
-
+### 启动服务
 ```bash
-# 启动反代服务（默认端口 8317，包含内置 WebUI）
-./target/release/antigravity-proxy.exe serve --port 8317
+# 默认监听 127.0.0.1:8317
+./target/release/antigravity-proxy serve
+
+# 指定监听地址与端口
+./target/release/antigravity-proxy serve --host 0.0.0.0 --port 8317
 ```
 
-浏览器打开 [http://127.0.0.1:8317/](http://127.0.0.1:8317/) 即可进入管理控制台。
+服务启动后，可通过浏览器访问对应地址查看管理面板。
 
----
+### 命令行工具
 
-## 📄 开源许可证
+```text
+Usage: antigravity-proxy [COMMAND]
 
-本项目基于 [MIT 许可证](LICENSE) 开源。
+Commands:
+  serve    启动代理服务与管理控制台
+  account  账号与配额管理（list, add, remove, refresh, reset）
+  config   查看或更新本地配置
+  test     连通性自检与流式调用测试
+  help     显示帮助信息
+```
+
+## 致谢
+
+本项目参考了 [Kazuki-0147/Antigravity-Proxy](https://github.com/Kazuki-0147/Antigravity-Proxy) 的逆向工程与协议分析成果，特此向原作者及相关贡献者致谢。
+
+## 许可证
+
+本项目基于 [MIT 许可证](LICENSE) 分发。
