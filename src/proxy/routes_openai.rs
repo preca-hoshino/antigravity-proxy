@@ -184,6 +184,7 @@ pub async fn chat_completions(State(state): State<Arc<AppState>>, Json(body): Js
                         let mut full_content = String::new();
                         let mut full_reasoning = String::new();
                         let mut tool_calls = Vec::new();
+                        let mut seen_tool_calls: std::collections::HashSet<String> = std::collections::HashSet::new();
                         let mut last_usage_meta: Option<Value> = None;
 
                         for line in text.lines() {
@@ -211,18 +212,23 @@ pub async fn chat_completions(State(state): State<Arc<AppState>>, Json(body): Js
                                                     if let Some(fc) = part.get("functionCall") {
                                                         let name = fc.get("name").and_then(|n| n.as_str()).unwrap_or("");
                                                         let call_id = fc.get("id").and_then(|id| id.as_str()).unwrap_or("call_generated");
-                                                        let args = fc.get("args").map(|a| {
-                                                            if a.is_string() { a.as_str().unwrap().to_string() } else { a.to_string() }
-                                                        }).unwrap_or_else(|| "{}".to_string());
+                                                        let dedupe_key = format!("{}:{}", call_id, name);
 
-                                                        tool_calls.push(serde_json::json!({
-                                                            "id": call_id,
-                                                            "type": "function",
-                                                            "function": {
-                                                                "name": name,
-                                                                "arguments": args
-                                                            }
-                                                        }));
+                                                        if !seen_tool_calls.contains(&dedupe_key) {
+                                                            seen_tool_calls.insert(dedupe_key);
+                                                            let args = fc.get("args").map(|a| {
+                                                                if a.is_string() { a.as_str().unwrap().to_string() } else { a.to_string() }
+                                                            }).unwrap_or_else(|| "{}".to_string());
+
+                                                            tool_calls.push(serde_json::json!({
+                                                                "id": call_id,
+                                                                "type": "function",
+                                                                "function": {
+                                                                    "name": name,
+                                                                    "arguments": args
+                                                                }
+                                                            }));
+                                                        }
                                                     }
                                                 }
                                             }
@@ -303,11 +309,18 @@ pub async fn chat_completions(State(state): State<Arc<AppState>>, Json(body): Js
                         });
 
                         if last_usage_meta.is_some() {
-                            res_json.as_object_mut().unwrap().insert("usage".to_string(), serde_json::json!({
+                            let usage_obj = serde_json::json!({
                                 "prompt_tokens": prompt_tok,
-                                "completion_tokens": comp_tok,
-                                "total_tokens": total_tok
-                            }));
+                                "completion_tokens": generated_tok,
+                                "total_tokens": total_tok,
+                                "prompt_tokens_details": {
+                                    "cached_tokens": cached_tok
+                                },
+                                "completion_tokens_details": {
+                                    "reasoning_tokens": thoughts_tok
+                                }
+                            });
+                            res_json.as_object_mut().unwrap().insert("usage".to_string(), usage_obj);
                         }
 
                         return Json(res_json).into_response();

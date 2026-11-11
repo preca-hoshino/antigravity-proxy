@@ -74,6 +74,8 @@ pub fn is_modern_flash_base_model(model: &str) -> bool {
         || lower == "gemini-3.7-flash"
         || lower == "gemini-3.6-flash"
         || lower == "gemini-3.5-flash"
+        || lower == "gemini-4-argon"
+        || lower == "argon"
 }
 
 pub fn is_sandbox_only_model(model: &str) -> bool {
@@ -81,6 +83,8 @@ pub fn is_sandbox_only_model(model: &str) -> bool {
     lower.contains("gpt")
         || lower.contains("antigravity-")
         || lower.contains("gemini-3.1-pro")
+        || lower.contains("gemini-4")
+        || lower.contains("argon")
         || lower.contains("image")
         || lower.contains("imagen")
         || lower == "dall-e-3"
@@ -103,6 +107,8 @@ pub fn determine_pool(model: &str) -> &'static str {
         || is_explicit_antigravity
         || lower.contains("image")
         || lower.contains("gemini-3.1-pro")
+        || lower.contains("gemini-4")
+        || lower.contains("argon")
         || is_modern_flash_tier_model(&lower)
         || is_modern_flash_base_model(&lower);
 
@@ -342,10 +348,15 @@ pub fn transform_to_google_body(
         }
     }
 
-    // Auto-map gemini-3.8-flash or gemini-3.7-flash with tier to the exact Google internal model
+    // Auto-map gemini-3.8-flash, gemini-3.7-flash, or gemini-4-argon with tier to the exact Google internal model
     if is_modern_flash_base_model(&base_model) {
+        let canonical_base = if base_model == "argon" {
+            "gemini-4-argon"
+        } else {
+            base_model.as_str()
+        };
         let tier = extracted_tier.unwrap_or("high");
-        google_model = format!("{}-{}", base_model, tier);
+        google_model = format!("{}-{}", canonical_base, tier);
     }
 
     if google_model.contains("claude") {
@@ -414,9 +425,9 @@ pub fn transform_to_google_body(
         }
     }
 
-    let is_thinking_model = raw_model.contains("-thinking");
+    let is_thinking_model = raw_model.contains("-thinking") || raw_model.contains("argon");
     let is_image_model = google_model.contains("image") || google_model.contains("imagen");
-    let is_gemini3_model = google_model.contains("gemini-3") && !is_image_model;
+    let is_gemini3_model = (google_model.contains("gemini-3") || google_model.contains("gemini-4") || google_model.contains("argon")) && !is_image_model;
 
     // Extract system messages and history messages
     let messages = openai_body

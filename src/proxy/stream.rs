@@ -2,6 +2,7 @@ use async_stream::stream;
 use bytes::Bytes;
 use futures_util::Stream;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 use crate::logger::LogBroadcaster;
@@ -19,6 +20,7 @@ pub fn transform_google_sse_to_openai_stream(
         let mut buffer = String::new();
         let mut emitted_role = false;
         let mut current_tool_calls_active = false;
+        let mut seen_tool_calls: HashSet<String> = HashSet::new();
         let mut last_usage = None;
         let mut first_token_time: Option<Instant> = None;
         let mut raw_usage_obj: Option<Value> = None;
@@ -53,11 +55,27 @@ pub fn transform_google_sse_to_openai_stream(
                             let prompt = usage_meta.get("promptTokenCount").and_then(|v| v.as_i64()).unwrap_or(0);
                             let completion = usage_meta.get("candidatesTokenCount").and_then(|v| v.as_i64()).unwrap_or(0);
                             let total = usage_meta.get("totalTokenCount").and_then(|v| v.as_i64()).unwrap_or(prompt + completion);
+                            let cached = usage_meta.get("cachedContentTokenCount").and_then(|v| v.as_i64()).unwrap_or(0);
+                            let thoughts = usage_meta.get("thoughtsTokenCount").and_then(|v| v.as_i64()).unwrap_or(0);
+
+                            let generated = if thoughts > 0 {
+                                completion + thoughts
+                            } else if total > prompt && completion == 0 {
+                                total - prompt
+                            } else {
+                                completion
+                            };
 
                             last_usage = Some(serde_json::json!({
                                 "prompt_tokens": prompt,
-                                "completion_tokens": completion,
-                                "total_tokens": total
+                                "completion_tokens": generated,
+                                "total_tokens": total,
+                                "prompt_tokens_details": {
+                                    "cached_tokens": cached
+                                },
+                                "completion_tokens_details": {
+                                    "reasoning_tokens": thoughts
+                                }
                             }));
                         }
 
@@ -104,20 +122,25 @@ pub fn transform_google_sse_to_openai_stream(
                                         current_tool_calls_active = true;
                                         let name = func_call.get("name").and_then(|n| n.as_str()).unwrap_or("");
                                         let call_id = func_call.get("id").and_then(|id| id.as_str()).unwrap_or("call_generated");
-                                        let args = func_call.get("args").map(|a| {
-                                            if a.is_string() { a.as_str().unwrap().to_string() } else { a.to_string() }
-                                        }).unwrap_or_else(|| "{}".to_string());
+                                        let dedupe_key = format!("{}:{}", call_id, name);
 
-                                        let tool_call_obj = serde_json::json!([{
-                                            "index": 0,
-                                            "id": call_id,
-                                            "type": "function",
-                                            "function": {
-                                                "name": name,
-                                                "arguments": args
-                                            }
-                                        }]);
-                                        delta.insert("tool_calls".to_string(), tool_call_obj);
+                                        if !seen_tool_calls.contains(&dedupe_key) {
+                                            seen_tool_calls.insert(dedupe_key);
+                                            let args = func_call.get("args").map(|a| {
+                                                if a.is_string() { a.as_str().unwrap().to_string() } else { a.to_string() }
+                                            }).unwrap_or_else(|| "{}".to_string());
+
+                                            let tool_call_obj = serde_json::json!([{
+                                                "index": 0,
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": name,
+                                                    "arguments": args
+                                                }
+                                            }]);
+                                            delta.insert("tool_calls".to_string(), tool_call_obj);
+                                        }
                                     }
 
                                     if !delta.is_empty() {

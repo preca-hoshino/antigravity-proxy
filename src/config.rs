@@ -27,6 +27,8 @@ pub struct ServerConfig {
     pub enable_web: bool,
     #[serde(default = "default_accounts_path")]
     pub accounts_file: String,
+    #[serde(default)]
+    pub proxy: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,6 +128,7 @@ impl Default for ServerConfig {
             port: default_port(),
             enable_web: true,
             accounts_file: default_accounts_path(),
+            proxy: None,
         }
     }
 }

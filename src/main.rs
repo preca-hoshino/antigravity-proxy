@@ -48,10 +48,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cfg.server.accounts_file = args.accounts.to_string_lossy().to_string();
             }
 
-            let client = Client::builder()
+            let mut client_builder = Client::builder()
                 .pool_max_idle_per_host(10)
-                .tcp_keepalive(std::time::Duration::from_secs(60))
-                .build()?;
+                .tcp_keepalive(std::time::Duration::from_secs(60));
+
+            if let Some(ref proxy_url) = cfg.server.proxy {
+                if !proxy_url.trim().is_empty() {
+                    let proxy = reqwest::Proxy::all(proxy_url)?;
+                    client_builder = client_builder.proxy(proxy);
+                }
+            }
+
+            let client = client_builder.build()?;
 
             let config_arc = Arc::new(cfg);
             let storage = AccountStorage::new(&config_arc.server.accounts_file);
@@ -70,6 +78,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  {} http://{}", "• Web Management UI:   ".bright_yellow(), addr);
             println!("  {} {}", "• Accounts File:       ".bright_yellow(), config_arc.server.accounts_file.cyan());
             println!("  {} {}", "• Config File:         ".bright_yellow(), args.config.display().to_string().cyan());
+            if let Some(ref p) = config_arc.server.proxy {
+                println!("  {} {}", "• Outbound Proxy:      ".bright_yellow(), p.magenta());
+            }
             println!("  {} {}", "• Active Strategy:     ".bright_yellow(), config_arc.rotation.strategy.cyan());
             println!("{}", "=========================================================".bright_cyan());
 
