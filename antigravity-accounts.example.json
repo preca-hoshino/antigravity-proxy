@@ -1,0 +1,13 @@
+[
+  {
+    "email": "user@example.com",
+    "refreshToken": "1//04xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "accessToken": "ya29.a0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expiresAt": 1700000000000,
+    "projectId": "cloudaicompanion-project-id",
+    "healthScore": 100.0,
+    "lastUsed": 0,
+    "tokenUsage": 0,
+    "cooldowns": {}
+  }
+]

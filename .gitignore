@@ -1,0 +1,22 @@
+# Rust targets & build artifacts
+/target
+Cargo.lock.bak
+*.pdb
+
+# Local accounts with sensitive credentials (CRITICAL)
+antigravity-accounts.json
+antigravity-accounts.json.tmp
+*.tmp
+
+# Environment & local credentials
+.env
+.env.*
+!.env.example
+
+# Editor & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

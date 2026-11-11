@@ -1,0 +1,33 @@
+[server]
+host = "127.0.0.1"
+port = 8317
+enable_web = true
+accounts_file = "antigravity-accounts.json"
+
+[rotation]
+strategy = "hybrid"
+cooldown_ms = 60000
+
+[retry]
+max_attempts = 5
+default_timeout_ms = 300000
+
+[quota]
+refresh_interval_ms = 300000
+
+[endpoints]
+sandbox = [
+    "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+    "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+]
+cli = [
+    "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+    "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+]
+
+[features]
+jitter_enabled = true
+jitter_min_ms = 100
+jitter_max_ms = 500
