@@ -25,8 +25,13 @@ use std::path::PathBuf;
   3. 配置文件管理:
      antigravity-proxy config show                     # 打印当前 config.toml 内容
 
-  4. 连通性与模型自检:
-     antigravity-proxy test --model gemini-3.8-flash-high
+  4. 线上可用模型与配额查看:
+     antigravity-proxy models                          # 表格化拉取当前上游最新可用模型及配额
+     antigravity-proxy models --json                   # 输出纯 JSON 格式
+
+  5. 连通性与模型自检:
+     antigravity-proxy test --model gemini-4-argon-high
+     antigravity-proxy test --model gemini-4-hydrogen-high
 "#
 )]
 pub struct Cli {
@@ -41,6 +46,9 @@ pub enum Commands {
 
     /// Account management (list, add, remove, refresh, reset)
     Account(AccountArgs),
+
+    /// Fetch and display real-time available models and quotas from Google upstream
+    Models(ModelsArgs),
 
     /// View or update configuration
     Config(ConfigArgs),
@@ -76,6 +84,10 @@ pub struct AccountArgs {
     /// Path to accounts JSON file
     #[arg(short, long, default_value = "antigravity-accounts.json")]
     pub file: PathBuf,
+
+    /// Path to config file (for outbound proxy settings)
+    #[arg(short, long, default_value = "config.toml")]
+    pub config: PathBuf,
 }
 
 #[derive(Subcommand, Debug)]
@@ -115,6 +127,25 @@ pub enum AccountSubcommands {
         /// Optional specific account email to reset (resets all if omitted)
         email: Option<String>,
     },
+}
+
+#[derive(Args, Debug)]
+pub struct ModelsArgs {
+    /// Path to accounts JSON file
+    #[arg(short, long, default_value = "antigravity-accounts.json")]
+    pub file: PathBuf,
+
+    /// Path to config file (for outbound proxy settings)
+    #[arg(short, long, default_value = "config.toml")]
+    pub config: PathBuf,
+
+    /// Filter by specific account email
+    #[arg(short, long)]
+    pub email: Option<String>,
+
+    /// Output raw JSON instead of table
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args, Debug)]

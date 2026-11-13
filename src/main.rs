@@ -19,6 +19,21 @@ use std::sync::Arc;
 use upstream::headers::generate_fingerprint;
 use upstream::oauth::{exchange_code, generate_auth_url, get_project_id, get_user_email, refresh_access_token};
 
+fn build_http_client(cfg: &AppConfig) -> Result<Client, Box<dyn std::error::Error>> {
+    let mut client_builder = Client::builder()
+        .pool_max_idle_per_host(10)
+        .tcp_keepalive(std::time::Duration::from_secs(60));
+
+    if let Some(ref proxy_url) = cfg.server.proxy {
+        if !proxy_url.trim().is_empty() {
+            let proxy = reqwest::Proxy::all(proxy_url)?;
+            client_builder = client_builder.proxy(proxy);
+        }
+    }
+
+    Ok(client_builder.build()?)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -48,18 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cfg.server.accounts_file = args.accounts.to_string_lossy().to_string();
             }
 
-            let mut client_builder = Client::builder()
-                .pool_max_idle_per_host(10)
-                .tcp_keepalive(std::time::Duration::from_secs(60));
-
-            if let Some(ref proxy_url) = cfg.server.proxy {
-                if !proxy_url.trim().is_empty() {
-                    let proxy = reqwest::Proxy::all(proxy_url)?;
-                    client_builder = client_builder.proxy(proxy);
-                }
-            }
-
-            let client = client_builder.build()?;
+            let client = build_http_client(&cfg)?;
 
             let config_arc = Arc::new(cfg);
             let storage = AccountStorage::new(&config_arc.server.accounts_file);
@@ -88,7 +92,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         Commands::Account(args) => {
-            let client = Client::new();
+            let cfg = AppConfig::load_or_create(&args.config);
+            let client = build_http_client(&cfg)?;
             let storage = AccountStorage::new(&args.file);
 
             match args.action {
@@ -322,6 +327,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     storage.save_accounts(&accounts)?;
                     println!("{} Reset cooldowns and health score.", "✔".green());
                 }
+            }
+        }
+
+        Commands::Models(args) => {
+            let cfg = AppConfig::load_or_create(&args.config);
+            let client = build_http_client(&cfg)?;
+            let storage = AccountStorage::new(&args.file);
+            let accounts = storage.load_accounts();
+
+            if accounts.is_empty() {
+                println!("{}", "No accounts configured yet. Use 'account add' to add one.".yellow());
+                return Ok(());
+            }
+
+            let mut all_results = Vec::new();
+
+            for mut acc in accounts {
+                if let Some(ref target) = args.email {
+                    if acc.email != *target {
+                        continue;
+                    }
+                }
+
+                let now = chrono::Utc::now().timestamp_millis();
+                let needs_refresh = match acc.expires_at {
+                    Some(exp) => now + 60_000 >= exp,
+                    None => true,
+                };
+
+                if needs_refresh || acc.access_token.is_none() {
+                    if let Ok(token_res) = refresh_access_token(&client, &acc.refresh_token).await {
+                        acc.access_token = Some(token_res.access_token);
+                        acc.expires_at = Some(now + (token_res.expires_in * 1000));
+                    }
+                }
+
+                let fp = acc.fingerprint.clone().unwrap_or_else(|| generate_fingerprint(Some(&acc.email)));
+                if let (Some(token), Some(project_id)) = (&acc.access_token, &acc.project_id) {
+                    if !args.json {
+                        println!("Fetching upstream model catalog for {}...", acc.email.cyan());
+                    }
+                    match upstream::quota::fetch_available_models_raw(&client, token, &fp, project_id).await {
+                        Ok(res) => {
+                            all_results.push((acc.email.clone(), res));
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to fetch upstream models for {}: {}", acc.email.yellow(), e);
+                        }
+                    }
+                }
+            }
+
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&all_results)?);
+                return Ok(());
+            }
+
+            for (email, res) in all_results {
+                upstream::quota::print_models_summary_table(&email, &res);
             }
         }
 

@@ -2,7 +2,7 @@ use super::storage::{AccountStorage, AntigravityAccount};
 use crate::config::AppConfig;
 use crate::upstream::headers::generate_fingerprint;
 use crate::upstream::oauth::refresh_access_token;
-use crate::upstream::quota::fetch_quota;
+use crate::upstream::quota::{fetch_available_models_raw, fetch_quota, FetchAvailableModelsResult};
 use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -199,5 +199,48 @@ impl AccountManager {
                 }
             }
         }
+    }
+
+    pub async fn refresh_and_fetch_models(&self) -> Vec<(String, FetchAvailableModelsResult)> {
+        let accounts = self.accounts.read().await.clone();
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut results = Vec::new();
+
+        for mut acc in accounts {
+            let buffer_ms = 60_000;
+            let needs_refresh = match acc.expires_at {
+                Some(exp) => now + buffer_ms >= exp,
+                None => true,
+            };
+
+            if needs_refresh || acc.access_token.is_none() {
+                if let Ok(token_resp) = refresh_access_token(&self.client, &acc.refresh_token).await {
+                    acc.access_token = Some(token_resp.access_token);
+                    acc.expires_at = Some(now + (token_resp.expires_in * 1000));
+                    let mut lock = self.accounts.write().await;
+                    if let Some(pos) = lock.iter().position(|a| a.email == acc.email) {
+                        lock[pos].access_token = acc.access_token.clone();
+                        lock[pos].expires_at = acc.expires_at;
+                        let _ = self.storage.save_accounts(&lock);
+                    }
+                }
+            }
+
+            let fp = acc.fingerprint.clone().unwrap_or_else(|| generate_fingerprint(Some(&acc.email)));
+            if let (Some(token), Some(project_id)) = (&acc.access_token, &acc.project_id) {
+                if let Ok(res) = fetch_available_models_raw(&self.client, token, &fp, project_id).await {
+                    {
+                        let mut lock = self.accounts.write().await;
+                        if let Some(pos) = lock.iter().position(|a| a.email == acc.email) {
+                            lock[pos].quota = Some(res.quotas.clone());
+                            let _ = self.storage.save_accounts(&lock);
+                        }
+                    }
+                    results.push((acc.email.clone(), res));
+                }
+            }
+        }
+
+        results
     }
 }
