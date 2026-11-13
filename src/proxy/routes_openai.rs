@@ -17,6 +17,15 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub const SUPPORTED_MODELS: &[&str] = &[
+    "gemini-4-argon",
+    "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-4-argon-low",
+    "gemini-4-hydrogen",
+    "gemini-4-hydrogen-xhigh",
+    "gemini-4-hydrogen-high",
+    "gemini-4-hydrogen-medium",
+    "gemini-4-hydrogen-low",
     "gemini-3.8-flash",
     "gemini-3.8-flash-high",
     "gemini-3.8-flash-medium",
@@ -30,9 +39,18 @@ pub const SUPPORTED_MODELS: &[&str] = &[
     "gemini-3-flash",
     "gemini-2.5-pro",
     "gemini-2.5-flash",
+    "claude-opus-5-5",
+    "claude-opus-5-5-high",
+    "claude-opus-5-5-medium",
+    "claude-opus-5-5-low",
+    "claude-sonnet-5-5",
+    "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-medium",
+    "claude-sonnet-5-5-low",
     "claude-sonnet-4-6",
     "claude-opus-4-6",
     "claude-sonnet-4-5",
+    "gpt-oss-120b-medium",
 ];
 
 pub struct AppState {

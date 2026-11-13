@@ -1,6 +1,5 @@
 use super::routes_openai::AppState;
 use crate::upstream::headers::get_impersonation_headers;
-use crate::upstream::transform::is_sandbox_only_model;
 use axum::{
     body::Body,
     extract::{Path, State},
@@ -16,10 +15,19 @@ pub async fn list_gemini_models() -> Response {
     let models = serde_json::json!({
         "models": [
             {
-                "name": "models/gemini-3.7-flash-high",
-                "version": "gemini-3.7-flash-high",
-                "displayName": "gemini-3.7-flash-high",
-                "description": "Gemini 3.7 Flash High through AntigravityProxy",
+                "name": "models/gemini-4-argon",
+                "version": "gemini-4-argon-high",
+                "displayName": "gemini-4-argon",
+                "description": "Gemini 4 Argon High through AntigravityProxy",
+                "inputTokenLimit": 1048576,
+                "outputTokenLimit": 65535,
+                "supportedGenerationMethods": ["generateContent", "streamGenerateContent"]
+            },
+            {
+                "name": "models/gemini-4-hydrogen",
+                "version": "gemini-4-hydrogen-high",
+                "displayName": "gemini-4-hydrogen",
+                "description": "Gemini 4 Hydrogen High through AntigravityProxy",
                 "inputTokenLimit": 1048576,
                 "outputTokenLimit": 65535,
                 "supportedGenerationMethods": ["generateContent", "streamGenerateContent"]
@@ -29,6 +37,15 @@ pub async fn list_gemini_models() -> Response {
                 "version": "gemini-3.8-flash-high",
                 "displayName": "gemini-3.8-flash-high",
                 "description": "Gemini 3.8 Flash High through AntigravityProxy",
+                "inputTokenLimit": 1048576,
+                "outputTokenLimit": 65535,
+                "supportedGenerationMethods": ["generateContent", "streamGenerateContent"]
+            },
+            {
+                "name": "models/gemini-3.7-flash-high",
+                "version": "gemini-3.7-flash-high",
+                "displayName": "gemini-3.7-flash-high",
+                "description": "Gemini 3.7 Flash High through AntigravityProxy",
                 "inputTokenLimit": 1048576,
                 "outputTokenLimit": 65535,
                 "supportedGenerationMethods": ["generateContent", "streamGenerateContent"]
@@ -61,23 +78,7 @@ pub async fn gemini_native_handler(
     let is_streaming = action.eq_ignore_ascii_case("streamGenerateContent");
     let pool = "sandbox";
 
-    let endpoints: Vec<String> = if is_sandbox_only_model(clean_model) {
-        let comp: Vec<String> = state
-            .config
-            .endpoints
-            .sandbox
-            .iter()
-            .filter(|ep| ep.contains(".sandbox.googleapis.com"))
-            .cloned()
-            .collect();
-        if !comp.is_empty() {
-            comp
-        } else {
-            state.config.endpoints.sandbox.clone()
-        }
-    } else {
-        state.config.endpoints.sandbox.clone()
-    };
+    let endpoints: Vec<String> = state.config.endpoints.sandbox.clone();
 
     let account = match state.account_manager.get_best_account(pool, clean_model, &[]).await {
         Some(acc) => acc,

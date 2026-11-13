@@ -5,7 +5,7 @@ enable_web = true
 accounts_file = "antigravity-accounts.json"
 # 出站代理（支持 HTTP/HTTPS 与 SOCKS5，例如 "http://127.0.0.1:7890" 或 "socks5://127.0.0.1:1080"）
 # 留空或注释则默认读取系统环境变量（HTTPS_PROXY / ALL_PROXY）
-# proxy = "http://127.0.0.1:7890"
+# proxy = "http://127.0.0.1:27582"
 
 [rotation]
 strategy = "hybrid"
@@ -20,13 +20,11 @@ refresh_interval_ms = 300000
 
 [endpoints]
 sandbox = [
-    "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:streamGenerateContent?alt=sse",
-    "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
     "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+    "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
 ]
 cli = [
     "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
-    "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:streamGenerateContent?alt=sse",
     "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
 ]
 

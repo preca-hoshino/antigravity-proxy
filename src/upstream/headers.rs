@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-pub const ANTIGRAVITY_VERSION: &str = "2.8.0";
+pub const ANTIGRAVITY_VERSION: &str = "2.31.1";
 
 #[allow(dead_code)]
 const PLATFORMS: &[&str] = &["windows/amd64"];
@@ -148,7 +148,14 @@ pub fn get_impersonation_headers(access_token: &str, fingerprint: &DeviceFingerp
     headers.insert(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {}", access_token)).unwrap());
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
-    headers.insert(USER_AGENT, HeaderValue::from_str(&format!("antigravity/{} windows/amd64", ANTIGRAVITY_VERSION)).unwrap());
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_str(&format!(
+            "antigravity/hub/{} (aidev_client; os_type=windows; arch=amd64; cl=1019769835)",
+            ANTIGRAVITY_VERSION
+        ))
+        .unwrap(),
+    );
 
     headers.insert(
         HeaderName::from_static("x-goog-api-client"),

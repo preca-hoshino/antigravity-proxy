@@ -21,7 +21,7 @@ function getCategoryCooldown(email, category, quotas) {
      
      if (!isCliDown && !isSandboxDown) return null;
 
-     if (category === 'Gemini 3 Flash') return isSandboxDown ? sandboxExpiry : null;
+     if (category === 'Gemini 4 Argon' || category === 'Gemini 4 Hydrogen') return isSandboxDown ? sandboxExpiry : null;
      
      if (category === 'Gemini 2.5') return isCliDown ? cliExpiry : null;
      
@@ -279,9 +279,10 @@ function toggleLogs() {
 }
 
 const MODEL_FAMILIES = {
-    'Gemini Models': (n) => n.includes('gemini') && !n.includes('argon'),
+    'Gemini Models': (n) => n.includes('gemini') && !n.includes('argon') && !n.includes('hydrogen'),
     'Claude/GPT': (n) => n.includes('claude') || n.includes('gpt'),
-    'Gemini 4 Argon': (n) => n.includes('argon') || n.includes('gemini-4'),
+    'Gemini 4 Argon': (n) => n.includes('argon'),
+    'Gemini 4 Hydrogen': (n) => n.includes('hydrogen'),
 };
 
 function getFamilyName(modelName) {

@@ -3,11 +3,14 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-pub const ANTIGRAVITY_SYSTEM_INSTRUCTION: &str = "You are Antigravity, a powerful agentic AI coding assistant designed by the Google DeepMind team working on Advanced Agentic Coding.\n\
-You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.\n\
+pub const ANTIGRAVITY_SYSTEM_INSTRUCTION: &str = "<identity>\n\
+You are Antigravity, a powerful agentic AI assistant designed by the Google Deepmind team.\n\
+You are working with a USER to solve their task.\n\
+The USER will send you requests, which you must always prioritize addressing. User requests are enclosed within <USER_REQUEST> tags.\n\
+</identity>\n\
 **Absolute paths only**\n\
 **Proactiveness**\n\n\
-<priority>IMPORTANT: The instructions that follow supersede all above. Follow them as your primary directives.</priority>\n";
+<priority>IMPORTANT: The instructions that follow supersede all above. Follow them as your primary directives.</priority>";
 
 pub const RESPONSE_COMPLETION_PROTOCOL: &str = "<response_completion_protocol>\n\
 A response containing only internal thought/reasoning is invalid. Before ending every turn, emit either non-thought final answer text or a function call.\n\
@@ -19,6 +22,14 @@ pub const MISSING_THOUGHT_SIGNATURE_FALLBACK: &str = "skip_thought_signature_val
 pub const MAX_PARALLEL_FUNCTION_CALLS_PER_STEP: usize = 16;
 
 const CLAUDE_MODEL_REGISTRY: &[&str] = &[
+    "claude-opus-5-5-high",
+    "claude-opus-5-5-medium",
+    "claude-opus-5-5-low",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-medium",
+    "claude-sonnet-5-5-low",
+    "claude-sonnet-5-5",
     "claude-3-7-sonnet-20250219",
     "claude-3-5-sonnet-20241022",
     "claude-3-5-sonnet-v2-20241022",
@@ -33,6 +44,23 @@ const CLAUDE_MODEL_REGISTRY: &[&str] = &[
 ];
 
 const NATIVELY_SUPPORTED: &[&str] = &[
+    "gemini-4-argon",
+    "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-4-argon-low",
+    "gemini-4-hydrogen",
+    "gemini-4-hydrogen-xhigh",
+    "gemini-4-hydrogen-high",
+    "gemini-4-hydrogen-medium",
+    "gemini-4-hydrogen-low",
+    "claude-opus-5-5",
+    "claude-opus-5-5-high",
+    "claude-opus-5-5-medium",
+    "claude-opus-5-5-low",
+    "claude-sonnet-5-5",
+    "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-medium",
+    "claude-sonnet-5-5-low",
     "claude-sonnet-4-6",
     "claude-sonnet-4-6-thinking",
     "claude-sonnet-4-5",
@@ -65,6 +93,9 @@ pub fn is_modern_flash_tier_model(model: &str) -> bool {
             return true;
         }
     }
+    if lower.starts_with("gemini-4-argon-") || lower.starts_with("gemini-4-hydrogen-") {
+        return true;
+    }
     false
 }
 
@@ -76,6 +107,8 @@ pub fn is_modern_flash_base_model(model: &str) -> bool {
         || lower == "gemini-3.5-flash"
         || lower == "gemini-4-argon"
         || lower == "argon"
+        || lower == "gemini-4-hydrogen"
+        || lower == "hydrogen"
 }
 
 pub fn is_sandbox_only_model(model: &str) -> bool {
@@ -85,6 +118,7 @@ pub fn is_sandbox_only_model(model: &str) -> bool {
         || lower.contains("gemini-3.1-pro")
         || lower.contains("gemini-4")
         || lower.contains("argon")
+        || lower.contains("hydrogen")
         || lower.contains("image")
         || lower.contains("imagen")
         || lower == "dall-e-3"
@@ -109,6 +143,7 @@ pub fn determine_pool(model: &str) -> &'static str {
         || lower.contains("gemini-3.1-pro")
         || lower.contains("gemini-4")
         || lower.contains("argon")
+        || lower.contains("hydrogen")
         || is_modern_flash_tier_model(&lower)
         || is_modern_flash_base_model(&lower);
 
@@ -137,6 +172,13 @@ pub fn resolve_model_id(model_id: &str) -> String {
     }
     if clean_id.starts_with("gemini-claude-") {
         clean_id = format!("claude-{}", &clean_id["gemini-claude-".len()..]);
+    }
+
+    if clean_id == "argon" {
+        return "gemini-4-argon".to_string();
+    }
+    if clean_id == "hydrogen" {
+        return "gemini-4-hydrogen".to_string();
     }
 
     if clean_id.contains("image") || clean_id.contains("imagen") || clean_id == "dall-e-3" {
@@ -330,43 +372,80 @@ pub fn transform_to_google_body(
         .or_else(|| openai_body.get("reasoning").and_then(|r| r.get("effort")))
         .and_then(|v| v.as_str());
 
-    let extracted_tier = if raw_model.ends_with("-thinking-high") || raw_model.ends_with("-high") {
+    let normalized_param_tier = param_tier.map(|t| {
+        if t.eq_ignore_ascii_case("xhigh") || t.eq_ignore_ascii_case("extra") || t.eq_ignore_ascii_case("max") {
+            "xhigh"
+        } else if t.eq_ignore_ascii_case("high") {
+            "high"
+        } else if t.eq_ignore_ascii_case("medium") || t.eq_ignore_ascii_case("med") {
+            "medium"
+        } else if t.eq_ignore_ascii_case("low") || t.eq_ignore_ascii_case("min") || t.eq_ignore_ascii_case("minimal") {
+            "low"
+        } else {
+            t
+        }
+    });
+
+    let extracted_tier = if raw_model.ends_with("-thinking-xhigh") || raw_model.ends_with("-xhigh") {
+        Some("xhigh")
+    } else if raw_model.ends_with("-thinking-high") || raw_model.ends_with("-high") {
         Some("high")
     } else if raw_model.ends_with("-thinking-low") || raw_model.ends_with("-low") {
         Some("low")
     } else if raw_model.ends_with("-thinking-medium") || raw_model.ends_with("-medium") {
         Some("medium")
     } else {
-        param_tier
+        normalized_param_tier
     };
 
     let mut base_model = google_model.clone();
-    for suffix in &["-thinking-high", "-thinking-low", "-thinking-medium", "-high", "-low", "-medium", "-preview"] {
+    for suffix in &[
+        "-thinking-xhigh",
+        "-thinking-high",
+        "-thinking-low",
+        "-thinking-medium",
+        "-xhigh",
+        "-high",
+        "-low",
+        "-medium",
+        "-preview",
+    ] {
         if base_model.ends_with(suffix) {
             base_model = base_model[..base_model.len() - suffix.len()].to_string();
             break;
         }
     }
 
-    // Auto-map gemini-3.8-flash, gemini-3.7-flash, or gemini-4-argon with tier to the exact Google internal model
+    // Auto-map gemini-3.8-flash, gemini-3.7-flash, gemini-4-argon, or gemini-4-hydrogen with tier to the exact Google internal model
     if is_modern_flash_base_model(&base_model) {
-        let canonical_base = if base_model == "argon" {
-            "gemini-4-argon"
-        } else {
-            base_model.as_str()
+        let canonical_base = match base_model.as_str() {
+            "argon" => "gemini-4-argon",
+            "hydrogen" => "gemini-4-hydrogen",
+            other => other,
         };
-        let tier = extracted_tier.unwrap_or("high");
+        let mut tier = extracted_tier.unwrap_or("high");
+        // Argon does not have an xhigh tier upstream; clamp to high
+        if canonical_base == "gemini-4-argon" && tier == "xhigh" {
+            tier = "high";
+        }
         google_model = format!("{}-{}", canonical_base, tier);
     }
 
     if google_model.contains("claude") {
-        google_model = base_model.clone();
-        if google_model == "claude-opus-4-6" {
+        if base_model == "claude-opus-5-5" {
+            let tier = extracted_tier.unwrap_or("high");
+            google_model = format!("claude-opus-5-5-{}", tier);
+        } else if base_model == "claude-sonnet-5-5" {
+            let tier = extracted_tier.unwrap_or("high");
+            google_model = format!("claude-sonnet-5-5-{}", tier);
+        } else if base_model == "claude-opus-4-6" {
             google_model = "claude-opus-4-6-thinking".to_string();
-        } else if google_model == "claude-sonnet-4-6" {
+        } else if base_model == "claude-sonnet-4-6" {
             google_model = "claude-sonnet-4-6-thinking".to_string();
-        } else if google_model == "claude-sonnet-4-5" {
+        } else if base_model == "claude-sonnet-4-5" {
             google_model = "claude-sonnet-4-5-thinking".to_string();
+        } else {
+            google_model = base_model.clone();
         }
     }
 
@@ -405,12 +484,20 @@ pub fn transform_to_google_body(
         }
 
         if is_native {
-            if base_model.contains("gemini-3.1-pro") {
+            if is_modern_flash_base_model(&base_model) {
+                // Tiered modern models (Flash, Argon, Hydrogen) already resolved to their exact upstream tier above
+            } else if base_model.contains("gemini-3.1-pro") {
                 google_model = "gemini-3.1-pro-low".to_string();
             } else if base_model.contains("gemini-3-pro") {
                 google_model = format!("gemini-3-pro-{}", extracted_tier.unwrap_or("high"));
             } else if base_model.contains("gemini-3-flash") {
                 google_model = "gemini-3-flash".to_string();
+            } else if base_model == "claude-opus-5-5" {
+                let tier = extracted_tier.unwrap_or("high");
+                google_model = format!("claude-opus-5-5-{}", tier);
+            } else if base_model == "claude-sonnet-5-5" {
+                let tier = extracted_tier.unwrap_or("high");
+                google_model = format!("claude-sonnet-5-5-{}", tier);
             } else {
                 google_model = base_model.clone();
             }
@@ -425,9 +512,9 @@ pub fn transform_to_google_body(
         }
     }
 
-    let is_thinking_model = raw_model.contains("-thinking") || raw_model.contains("argon");
+    let is_thinking_model = raw_model.contains("-thinking") || raw_model.contains("argon") || raw_model.contains("hydrogen");
     let is_image_model = google_model.contains("image") || google_model.contains("imagen");
-    let is_gemini3_model = (google_model.contains("gemini-3") || google_model.contains("gemini-4") || google_model.contains("argon")) && !is_image_model;
+    let is_gemini3_model = (google_model.contains("gemini-3") || google_model.contains("gemini-4") || google_model.contains("argon") || google_model.contains("hydrogen")) && !is_image_model;
 
     // Extract system messages and history messages
     let messages = openai_body
@@ -530,7 +617,7 @@ pub fn transform_to_google_body(
                 "response": final_resp
             });
 
-            if google_model.contains("claude") || google_model.contains("gemini-3") {
+            if google_model.contains("claude") || google_model.contains("gemini-3") || google_model.contains("gemini-4") || google_model.contains("argon") || google_model.contains("hydrogen") {
                 func_resp
                     .as_object_mut()
                     .unwrap()
@@ -543,13 +630,23 @@ pub fn transform_to_google_body(
                 match content_val {
                     Value::String(text) => {
                         if !text.is_empty() {
-                            parts.push(serde_json::json!({ "text": text }));
+                            let formatted_text = if google_role == "user" && !text.contains("<USER_REQUEST>") {
+                                format!("<USER_REQUEST>\n{}\n</USER_REQUEST>", text)
+                            } else {
+                                text.to_string()
+                            };
+                            parts.push(serde_json::json!({ "text": formatted_text }));
                         }
                     }
                     Value::Array(arr) => {
                         for item in arr {
                             if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
-                                parts.push(serde_json::json!({ "text": t }));
+                                let formatted_text = if google_role == "user" && !t.contains("<USER_REQUEST>") {
+                                    format!("<USER_REQUEST>\n{}\n</USER_REQUEST>", t)
+                                } else {
+                                    t.to_string()
+                                };
+                                parts.push(serde_json::json!({ "text": formatted_text }));
                             } else if let Some(img_url) = item.get("image_url").and_then(|u| u.get("url")).and_then(|u| u.as_str()) {
                                 if img_url.starts_with("data:") {
                                     if let Some(comma_pos) = img_url.find(',') {
@@ -592,7 +689,7 @@ pub fn transform_to_google_body(
                         let mut extracted_sig = None;
                         if let Some(raw_id) = tc.get("id").and_then(|id| id.as_str()) {
                             let (clean_id, sig_opt) = split_tool_call_id(raw_id);
-                            if google_model.contains("claude") || google_model.contains("gemini-3") {
+                            if google_model.contains("claude") || google_model.contains("gemini-3") || google_model.contains("gemini-4") || google_model.contains("argon") || google_model.contains("hydrogen") {
                                 func_call
                                     .as_object_mut()
                                     .unwrap()
@@ -613,7 +710,7 @@ pub fn transform_to_google_body(
                     }
                 }
 
-                if (google_model.contains("gemini-3") || google_model.contains("gemini-2")) && !function_call_parts.is_empty() {
+                if (google_model.contains("gemini-4") || google_model.contains("gemini-3") || google_model.contains("gemini-2") || google_model.contains("argon") || google_model.contains("hydrogen")) && !function_call_parts.is_empty() {
                     for part in &mut function_call_parts {
                         if part.get("thoughtSignature").is_none() {
                             part.as_object_mut().unwrap().insert(
@@ -641,7 +738,7 @@ pub fn transform_to_google_body(
                     "args": parsed_args
                 });
 
-                if google_model.contains("claude") || google_model.contains("gemini-3") {
+                if google_model.contains("claude") || google_model.contains("gemini-3") || google_model.contains("gemini-4") || google_model.contains("argon") || google_model.contains("hydrogen") {
                     if let Some(raw_id) = m.get("id").and_then(|id| id.as_str()) {
                         let (clean_id, _) = split_tool_call_id(raw_id);
                         func_call
@@ -655,7 +752,7 @@ pub fn transform_to_google_body(
                     "functionCall": func_call
                 });
 
-                if google_model.contains("gemini-3") || google_model.contains("gemini-2") {
+                if google_model.contains("gemini-4") || google_model.contains("gemini-3") || google_model.contains("gemini-2") || google_model.contains("argon") || google_model.contains("hydrogen") {
                     func_part.as_object_mut().unwrap().insert(
                         "thoughtSignature".to_string(),
                         Value::String(MISSING_THOUGHT_SIGNATURE_FALLBACK.to_string()),
@@ -678,11 +775,11 @@ pub fn transform_to_google_body(
 
     let mut contents = merge_consecutive_function_responses(raw_contents);
 
-    if google_model.contains("gemini-3") {
+    if google_model.contains("gemini-4") || google_model.contains("gemini-3") || google_model.contains("argon") || google_model.contains("hydrogen") {
         contents = split_oversized_function_call_steps(contents);
     }
 
-    if google_model.contains("gemini-3") || google_model.contains("gemini-2") {
+    if google_model.contains("gemini-4") || google_model.contains("gemini-3") || google_model.contains("gemini-2") || google_model.contains("argon") || google_model.contains("hydrogen") {
         for content in &mut contents {
             if let Some(parts) = content.get_mut("parts").and_then(|p| p.as_array_mut()) {
                 for part in parts {
@@ -703,10 +800,14 @@ pub fn transform_to_google_body(
     let has_explicit_budget = openai_body.get("thinking_budget").is_some()
         || openai_body.get("thinking").and_then(|t| t.get("budget_tokens")).is_some();
 
-    let max_output_tokens = if is_gemini3_model {
-        requested_max_tokens.unwrap_or(65535).min(65535)
+    let max_output_tokens = if google_model.contains("hydrogen") || google_model.contains("carbon") {
+        requested_max_tokens.unwrap_or(65536).min(262144)
+    } else if google_model.contains("claude-opus-5-5") || google_model.contains("claude-sonnet-5-5") {
+        requested_max_tokens.unwrap_or(64000).min(128000)
+    } else if is_gemini3_model {
+        requested_max_tokens.unwrap_or(65536).min(65536)
     } else if is_thinking_model || has_explicit_budget || google_model.contains("claude") || google_model.contains("gemini-2") {
-        requested_max_tokens.unwrap_or(64000).max(64000).min(65535)
+        requested_max_tokens.unwrap_or(64000).max(64000).min(65536)
     } else {
         requested_max_tokens.unwrap_or(4096)
     };
@@ -751,9 +852,22 @@ pub fn transform_to_google_body(
     });
 
     if is_gemini3_model {
-        let level = extracted_tier
-            .or_else(|| openai_body.get("reasoning_effort").and_then(|r| r.as_str()))
-            .unwrap_or("medium");
+        let level = if google_model.ends_with("-xhigh") {
+            "XHIGH"
+        } else if google_model.ends_with("-high") {
+            "HIGH"
+        } else if google_model.ends_with("-low") {
+            "LOW"
+        } else if google_model.ends_with("-medium") {
+            "MEDIUM"
+        } else {
+            match extracted_tier.unwrap_or("high").to_lowercase().as_str() {
+                "xhigh" | "extra" | "max" => "XHIGH",
+                "low" | "minimal" => "LOW",
+                "medium" | "med" => "MEDIUM",
+                _ => "HIGH",
+            }
+        };
 
         google_request["generationConfig"]
             .as_object_mut()
@@ -823,7 +937,7 @@ pub fn transform_to_google_body(
                 serde_json::json!([{ "functionDeclarations": declarations }]),
             );
 
-            if google_model.contains("claude") {
+            if google_model.contains("claude") || google_model.contains("gemini-4") || google_model.contains("argon") || google_model.contains("hydrogen") {
                 google_request.as_object_mut().unwrap().insert(
                     "toolConfig".to_string(),
                     serde_json::json!({
@@ -840,6 +954,109 @@ pub fn transform_to_google_body(
         "userAgent": "antigravity",
         "requestId": format!("agent-{}", Uuid::new_v4()),
         "requestType": "agent",
+        "enabledCreditTypes": ["GOOGLE_ONE_AI"],
         "request": google_request
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_argon_resolution_and_transform() {
+        assert!(is_sandbox_only_model("gemini-4-argon"));
+        assert!(is_sandbox_only_model("gemini-4-argon-high"));
+        assert_eq!(determine_pool("gemini-4-argon"), "sandbox");
+        assert_eq!(determine_pool("gemini-4-argon-medium"), "sandbox");
+
+        // Base argon maps to gemini-4-argon-high by default
+        let req1 = serde_json::json!({
+            "model": "gemini-4-argon",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res1 = transform_to_google_body(&req1, "test-proj", false, "sess-1", false);
+        assert_eq!(res1["model"], "gemini-4-argon-high");
+        assert_eq!(res1["request"]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "HIGH");
+        assert_eq!(res1["enabledCreditTypes"], serde_json::json!(["GOOGLE_ONE_AI"]));
+
+        // Medium tier
+        let req2 = serde_json::json!({
+            "model": "gemini-4-argon-medium",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res2 = transform_to_google_body(&req2, "test-proj", false, "sess-1", false);
+        assert_eq!(res2["model"], "gemini-4-argon-medium");
+        assert_eq!(res2["request"]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "MEDIUM");
+
+        // Argon with reasoning_effort
+        let req3 = serde_json::json!({
+            "model": "argon",
+            "reasoning_effort": "low",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res3 = transform_to_google_body(&req3, "test-proj", false, "sess-1", false);
+        assert_eq!(res3["model"], "gemini-4-argon-low");
+        assert_eq!(res3["request"]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "LOW");
+    }
+
+    #[test]
+    fn test_hydrogen_resolution_and_transform() {
+        assert!(is_sandbox_only_model("gemini-4-hydrogen"));
+        assert!(is_sandbox_only_model("gemini-4-hydrogen-high"));
+        assert!(is_sandbox_only_model("gemini-4-hydrogen-xhigh"));
+        assert_eq!(determine_pool("gemini-4-hydrogen"), "sandbox");
+        assert_eq!(determine_pool("hydrogen"), "sandbox");
+
+        // Base hydrogen maps to gemini-4-hydrogen-high by default
+        let req1 = serde_json::json!({
+            "model": "gemini-4-hydrogen",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res1 = transform_to_google_body(&req1, "test-proj", false, "sess-1", false);
+        assert_eq!(res1["model"], "gemini-4-hydrogen-high");
+        assert_eq!(res1["request"]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "HIGH");
+
+        // 4 tiers: low, medium, high, xhigh
+        for (tier, upper) in &[("low", "LOW"), ("medium", "MEDIUM"), ("high", "HIGH"), ("xhigh", "XHIGH")] {
+            let model_name = format!("gemini-4-hydrogen-{}", tier);
+            let req = serde_json::json!({
+                "model": model_name,
+                "messages": [{"role": "user", "content": "hi"}]
+            });
+            let res = transform_to_google_body(&req, "test-proj", false, "sess-1", false);
+            assert_eq!(res["model"], model_name);
+            assert_eq!(res["request"]["generationConfig"]["thinkingConfig"]["thinkingLevel"], *upper);
+        }
+
+        // Hydrogen with reasoning_effort: "xhigh"
+        let req2 = serde_json::json!({
+            "model": "hydrogen",
+            "reasoning_effort": "xhigh",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res2 = transform_to_google_body(&req2, "test-proj", false, "sess-1", false);
+        assert_eq!(res2["model"], "gemini-4-hydrogen-xhigh");
+        assert_eq!(res2["request"]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "XHIGH");
+    }
+
+    #[test]
+    fn test_claude_5_5_resolution_and_transform() {
+        assert_eq!(determine_pool("claude-opus-5-5"), "sandbox");
+        assert_eq!(determine_pool("claude-sonnet-5-5"), "sandbox");
+
+        let req1 = serde_json::json!({
+            "model": "claude-opus-5-5-medium",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res1 = transform_to_google_body(&req1, "test-proj", false, "sess-1", false);
+        assert_eq!(res1["model"], "claude-opus-5-5-medium");
+
+        let req2 = serde_json::json!({
+            "model": "claude-sonnet-5-5",
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let res2 = transform_to_google_body(&req2, "test-proj", false, "sess-1", false);
+        assert_eq!(res2["model"], "claude-sonnet-5-5-high");
+    }
 }
